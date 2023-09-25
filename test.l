@@ -9,7 +9,13 @@ void yyerror(char*);
 %%
 "+"	{ return ADD; }
 "-"	{ return SUB; }
+"*" { return MUL; }
+"/" { return DIV; }
+"**" { return EXP; }
+"(" { return LPAR; }
+")" { return RPAR; }
 [0-9]+	{ yylval.val = atoi(yytext); return NUMBER; }
+[0-9]+(/.[0-9]+)?  
 
 [ \t]   { /* ignore white space */ }
 .	{ yyerror("Unknown character!\n"); }
