@@ -10,7 +10,7 @@ int yylex();
 
 // you should define the return value in lexer here
 %union {
-	double val
+	double val;
 }
 
 // you should declare tokens and their value type here

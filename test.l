@@ -14,9 +14,7 @@ void yyerror(char*);
 "**" { return EXP; }
 "(" { return LPAR; }
 ")" { return RPAR; }
-[0-9]+	{ yylval.val = atoi(yytext); return NUMBER; }
-[0-9]+(/.[0-9]+)?  
-
+[1-9]*[0-9](\.[0-9]+)?	{ yylval.val = atof(yytext); return NUMBER; } 
 [ \t]   { /* ignore white space */ }
 .	{ yyerror("Unknown character!\n"); }
 \n      { return EOL; }
