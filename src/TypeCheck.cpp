@@ -56,7 +56,33 @@ void check_Prog(std::ostream* out, aA_program p)
         1. Design the order of checking the program elements to meet the requirements that funtion declaration and global variable declaration can be used anywhere in the program.
 
         2. Many types of statements indeed collapse to some same units, so a good abstract design will help you reduce the amount of your code.
-    */    
+    */ 
+        switch (ele->kind)
+        {
+        case A_programVarDeclStmtKind:
+        {
+            check_VarDecl(out, ele->u.varDeclStmt);
+            // check_VarDeclStmt(out, ele->u.varDeclStmt);
+        }
+        break;
+        case A_programStructDefKind:
+        {
+            check_StructDef(out, ele->u.structDef);
+        }
+        break;
+        case A_programFnDeclStmtKind:
+        {
+            check_FnDeclStmt(out, ele->u.fnDeclStmt);
+        }
+        break;
+        case A_programFnDefKind:
+        {
+
+            // check_FnDef(out, ele->u.fnDef);
+        }
+        break;
+        }
+
     }
 
     for (auto ele : p->programElements)
