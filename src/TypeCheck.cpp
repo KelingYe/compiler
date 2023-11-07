@@ -99,6 +99,47 @@ void check_Prog(std::ostream* out, aA_program p)
     return;
 }
 
+void check_VarDeclScalar(std::ostream* out, aA_varDeclScalar vd){
+    
+}
+
+void check_VarDeclArray(std::ostream* out, aA_varDeclArray vd){
+
+}
+
+void check_VarDec(std::ostream* out, aA_varDecl vd){
+    if (!vd)
+        return;
+    string name;
+    if (vd->kind == A_varDeclStmtType::A_varDeclKind){
+        check_VarDeclScalar(out, vd->u.declScalar);       
+    }
+    else if (vd->kind == A_varDeclStmtType::A_varDefKind){
+        check_VarDeclArray(out, vd->u.declArray);       
+    }
+    return;
+}
+
+void check_VarDefScalar(std::ostream* out, aA_varDefScalar vd){
+
+}
+
+void check_VarDefArray(std::ostream* out, aA_varDefArray vd){
+
+}
+
+void check_VarDef(std::ostream* out, aA_varDef vd){
+    if (!vd)
+        return;
+    string name;
+    if (vd->kind == A_varDeclStmtType::A_varDeclKind){
+        check_VarDefScalar(out, vd->u.defScalar);       
+    }
+    else if (vd->kind == A_varDeclStmtType::A_varDefKind){
+        check_VarDefArray(out, vd->u.defArray);       
+    }
+    return;
+}
 
 void check_VarDecl(std::ostream* out, aA_varDeclStmt vd)
 {
@@ -111,15 +152,15 @@ void check_VarDecl(std::ostream* out, aA_varDeclStmt vd)
         // Example:
         //   let a:int;
         //   let a[5]:int;
-        
         /* write your code here*/
+        check_VarDec(out, vd->u.varDecl);       
     }
     else if (vd->kind == A_varDeclStmtType::A_varDefKind){
         // if both declaration and initialization 
         // Example:
         //   let a:int = 5;
-        
         /* write your code here */
+        check_VarDef(out, vd->u.varDef);       
     }
     return;
 }
