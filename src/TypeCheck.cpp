@@ -272,9 +272,19 @@ void check_StructDef(std::ostream *out, aA_structDef sd)
     //      }
 
     /* write your code here */
+     if (!sd)
+        return;
+    // 检查是否重复声明
+    string name = *(sd->id);
+    A_pos pos = sd->pos;
+    // 还需检查变量重名+所有变量类型合法
+    check_multiDeclaration(out, name, pos);
+    //将其加入到struct2Members    
+    struct2Members[name] = sd->varDecls;
     return;
 }
 
+//paramMemberMap func2Param; 
 void check_FnDecl(std::ostream *out, aA_fnDecl fd)
 {
     // Example:
@@ -286,6 +296,18 @@ void check_FnDecl(std::ostream *out, aA_fnDecl fd)
         write your code here
         Hint: you may need to check if the function is already declared
     */
+     // 检查类型
+    aA_type type = fd->type;
+    check_type_valid(out, type);
+  
+    // 检查是否重复声明
+    string name = *(fd->id);
+    A_pos pos = fd->pos;
+    check_multiDeclaration(out, name, pos);
+
+    // 还需检查变量重名+所有变量类型合法 
+
+    
     return;
 }
 
@@ -299,7 +321,27 @@ void check_FnDeclStmt(std::ostream *out, aA_fnDeclStmt fd)
     return;
 }
 
-void check_FnDef(std::ostream *out, aA_fnDef fd)
+//只检查是否定义，不向内部检查
+void check_FnDef1(std::ostream *out, aA_fnDef fd)
+{
+    // Example:
+    //      fn main(a:int, b:int)->int{
+    //          let c:int;
+    //          c = a + b;
+    //          return c;
+    //      }
+    if (!fd)
+        return;
+    check_FnDecl(out, fd->fnDecl);
+    /*
+        write your code here
+        Hint: you may pay attention to the function parameters, local variables and global variables.
+    */
+    return;
+}
+
+//向内部检查
+void check_FnDef1(std::ostream *out, aA_fnDef fd)
 {
     // Example:
     //      fn main(a:int, b:int)->int{
