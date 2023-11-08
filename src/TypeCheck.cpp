@@ -3,9 +3,44 @@
 // maps to store the type information. Feel free to design new data structures if you need.
 typeMap g_token2Type;         // global token ids to type
 typeMap funcparam_token2Type; // func params token ids to type
+typeMap g_fnDec2Type; //存储声明过的函数及其返回值
+typeMap g_fnDef2Type; //存储已定义过的函数及其返回值
+
+
 
 paramMemberMap func2Param;
 paramMemberMap struct2Members;
+
+
+// cur_scope,global is 1, entering scope ++, leaving scope --
+int cur_scope = 1;
+
+void addCurScope()
+{
+    cur_scope++;
+    //printf("Entered a new code block %d\n", cur_scope);
+}
+
+// 清除所有curScope的varDecl
+void minusCurScope()
+{
+    vector<string> allDeleteNames;
+    // kill all the variables
+    for (auto i : g_token2Type)
+    {
+        //也就是在存变量表时，需要存该变量的作用域
+        if (i.second->cur_scope == cur_scope)
+        {
+            // 不能在循环中改变结构体的值
+            allDeleteNames.push_back(i.first);
+        }
+    }
+    for (auto i : allDeleteNames)
+        g_token2Type.erase(i);
+
+    cur_scope--;
+}
+
 
 // private util functions. You can use these functions to help you debug.
 void error_print(std::ostream *out, A_pos p, string info)
@@ -138,6 +173,12 @@ void check_multiDeclaration(std::ostream *out, string name, A_pos pos)
     {
         error_print(out, pos, "This name " + name + " has been declared in struct map!");
     }
+   
+   // func
+    if (g_fnDec2Type.find(name) != g_fnDec2Type.end())
+    {
+        error_print(out, pos, "This name " + name + " has been declared in func name map!");
+    }
 }
 
 void check_VarDeclScalar(std::ostream *out, aA_varDeclScalar vd)
@@ -149,7 +190,8 @@ void check_VarDeclScalar(std::ostream *out, aA_varDeclScalar vd)
     string name = *(vd->id);
     A_pos pos = vd->pos;
     check_multiDeclaration(out, name, pos);
-    // 保存信息至全局变量表
+    // 保存信息至变量表
+    type->cur_scope=cur_scope;
     g_token2Type[name] = type;
 }
 
@@ -163,7 +205,8 @@ void check_VarDeclArray(std::ostream *out, aA_varDeclArray vd)
     A_pos pos = vd->pos;
     int len = vd->len;
     check_multiDeclaration(out, name, pos);
-    // 保存信息至全局变量表  len没有用上，但是后续可能要用这个检查  ？？？？
+    // 保存信息至变量表  len没有用上，但是后续可能要用这个检查  ？？？？
+    type->cur_scope=cur_scope;
     g_token2Type[name] = type;
 }
 
@@ -171,7 +214,7 @@ void check_VarDec(std::ostream *out, aA_varDecl vd)
 {
     if (!vd)
         return;
-    
+
     if (vd->kind == A_varDeclStmtType::A_varDeclKind)
     {
         check_VarDeclScalar(out, vd->u.declScalar);
@@ -187,35 +230,35 @@ void check_VarDefScalar(std::ostream *out, aA_varDefScalar vd)
 {
     if (!vd)
         return;
-     // 检查类型
+    // 检查类型
     aA_type type = vd->type;
     check_type_valid(out, type);
     // 检查是否重复声明
     string name = *(vd->id);
     A_pos pos = vd->pos;
     check_multiDeclaration(out, name, pos);
-    // 保存信息至全局变量表  val没有用上，但是后续可能要用这个检查  ？？？？
-    aA_rightVal val=vd->val;
+    // 保存信息至变量表  val没有用上，但是后续可能要用这个检查  ？？？？
+    aA_rightVal val = vd->val;
+    type->cur_scope=cur_scope;
     g_token2Type[name] = type;
-   
 }
 
 void check_VarDefArray(std::ostream *out, aA_varDefArray vd)
 {
     if (!vd)
         return;
-     // 检查类型
+    // 检查类型
     aA_type type = vd->type;
     check_type_valid(out, type);
     // 检查是否重复声明
     string name = *(vd->id);
     A_pos pos = vd->pos;
     check_multiDeclaration(out, name, pos);
-    // 保存信息至全局变量表  len,vals没有用上，但是后续可能要用这个检查  ？？？
-    int len =vd->len;
-    vector<aA_rightVal> vals=vd->vals;
+    // 保存信息至变量表  len,vals没有用上，但是后续可能要用这个检查  ？？？
+    int len = vd->len;
+    vector<aA_rightVal> vals = vd->vals;
+    type->cur_scope=cur_scope;
     g_token2Type[name] = type;
-   
 }
 
 void check_VarDef(std::ostream *out, aA_varDef vd)
@@ -260,6 +303,46 @@ void check_VarDecl(std::ostream *out, aA_varDeclStmt vd)
     return;
 }
 
+
+// 还需检查变量重名+所有变量类型合法  既适用于struct,也适用于函数传输的函数
+void check_params(std::ostream *out, vector<aA_varDecl> varDeclList)
+{
+
+    vector<string> paramNames;
+    for (auto varDecl : varDeclList)
+    {
+        string name;
+        // 判断变量类型
+        if (varDecl->kind == A_varDeclStmtType::A_varDeclKind)
+        {
+
+            aA_varDeclScalar vd=varDecl->u.declScalar;
+            // 检查类型
+            aA_type type = vd->type;
+            check_type_valid(out, type);
+            name=*(vd->id);
+        }
+        else if (varDecl->kind == A_varDeclStmtType::A_varDefKind)
+        {
+            aA_varDeclArray vd=varDecl->u.declArray;
+            // 检查类型
+            aA_type type = vd->type;
+            check_type_valid(out, type);
+            name=*(vd->id);
+        }
+
+        //查看是否重名
+        for (auto paramName : paramNames)
+        {
+            if (name == paramName)
+            {
+                error_print(out, varDecl->pos, "Declared a same variable name!");
+            }
+        }
+        paramNames.push_back(name);
+    }
+}
+
 void check_StructDef(std::ostream *out, aA_structDef sd)
 {
     if (!sd)
@@ -272,19 +355,20 @@ void check_StructDef(std::ostream *out, aA_structDef sd)
     //      }
 
     /* write your code here */
-     if (!sd)
+    if (!sd)
         return;
     // 检查是否重复声明
     string name = *(sd->id);
     A_pos pos = sd->pos;
-    // 还需检查变量重名+所有变量类型合法
     check_multiDeclaration(out, name, pos);
-    //将其加入到struct2Members    
+    // 还需检查变量重名+所有变量类型合法
+    check_params(out, sd->varDecls);
+    // 将其加入到struct2Members
     struct2Members[name] = sd->varDecls;
     return;
 }
 
-//paramMemberMap func2Param; 
+// paramMemberMap func2Param;
 void check_FnDecl(std::ostream *out, aA_fnDecl fd)
 {
     // Example:
@@ -296,18 +380,12 @@ void check_FnDecl(std::ostream *out, aA_fnDecl fd)
         write your code here
         Hint: you may need to check if the function is already declared
     */
-     // 检查类型
+    // 检查返回类型
     aA_type type = fd->type;
     check_type_valid(out, type);
-  
-    // 检查是否重复声明
-    string name = *(fd->id);
-    A_pos pos = fd->pos;
-    check_multiDeclaration(out, name, pos);
-
-    // 还需检查变量重名+所有变量类型合法 
-
-    
+    // 还需检查变量重名+所有变量类型合法
+    vector<aA_varDecl> varDecls=fd->paramDecl->varDecls;
+    check_params(out, varDecls);
     return;
 }
 
@@ -317,11 +395,29 @@ void check_FnDeclStmt(std::ostream *out, aA_fnDeclStmt fd)
     //      fn main(a:int, b:int)->int;
     if (!fd)
         return;
+    // 检查是否重复声明（因为fndef和fndec共用此函数，但操作不同，需要移到外面）
+    string name = *(fd->fnDecl->id);
+    A_pos pos = fd->pos;
+    check_multiDeclaration(out, name, pos);
     check_FnDecl(out, fd->fnDecl);
+    //将其加入到全局函数声明表中
+    g_fnDec2Type[name]=fd->fnDecl->type;
+    func2Param[name] = fd->fnDecl->paramDecl->varDecls;
+    
     return;
 }
 
-//只检查是否定义，不向内部检查
+
+//检查函数是否重复定义
+void check_multiFndef(std::ostream *out, string name, A_pos pos){
+
+    if (g_fnDef2Type.find(name) != g_fnDef2Type.end())
+    {
+        error_print(out, pos, "This name " + name + " has been defined in func name map!");
+    }
+}
+
+// 只检查是否定义，不向内部检查
 void check_FnDef1(std::ostream *out, aA_fnDef fd)
 {
     // Example:
@@ -332,15 +428,25 @@ void check_FnDef1(std::ostream *out, aA_fnDef fd)
     //      }
     if (!fd)
         return;
+    //检查是否重复定义
+    string name = *(fd->fnDecl->id);
+    A_pos pos = fd->pos;
+    check_multiFndef(out, name, pos);
     check_FnDecl(out, fd->fnDecl);
-    /*
-        write your code here
-        Hint: you may pay attention to the function parameters, local variables and global variables.
-    */
+    //将其加入到全局函数定义表,在判断后选择是否加入全局函数声明表
+    g_fnDef2Type[name]=fd->fnDecl->type;
+    if(!g_fnDec2Type[name]){
+        g_fnDec2Type[name]=fd->fnDecl->type;
+        func2Param[name] = fd->fnDecl->paramDecl->varDecls;
+    }else{
+        //这里可能会有重载的问题，但是本次lab不做处理
+    }
+
+    
     return;
 }
 
-//向内部检查
+// 向内部检查
 void check_FnDef1(std::ostream *out, aA_fnDef fd)
 {
     // Example:
@@ -351,11 +457,15 @@ void check_FnDef1(std::ostream *out, aA_fnDef fd)
     //      }
     if (!fd)
         return;
-    check_FnDecl(out, fd->fnDecl);
-    /*
-        write your code here
-        Hint: you may pay attention to the function parameters, local variables and global variables.
-    */
+    //函数全局已经检查过可以向内部检查
+    addCurScope();
+    
+    for (auto stmt : fd->stmts)
+    {
+      check_CodeblockStmt(out, stmt);
+    }
+    minusCurScope();
+   
     return;
 }
 
