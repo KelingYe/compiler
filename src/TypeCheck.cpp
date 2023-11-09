@@ -13,6 +13,7 @@ paramMemberMap struct2Members; // struct name 以及对应的成员参数
 // 全局层数为1, 进入函数 ++, 离开函数 --
 int cur_scope = 1;
 
+//进入新的作用域
 void addCurScope()
 {
     cur_scope++;
