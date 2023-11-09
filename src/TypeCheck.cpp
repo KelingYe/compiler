@@ -112,6 +112,9 @@ void check_Prog(std::ostream *out, aA_program p)
             check_FnDef1(out, ele->u.fnDef);
         }
         break;
+        default:{
+            ;
+        }
         }
     }
 
@@ -131,6 +134,9 @@ void check_Prog(std::ostream *out, aA_program p)
             check_FnDef1(out, ele->u.fnDef);
         }
         break;
+        default:{
+            ;
+        }
         }
     }
 
@@ -142,7 +148,7 @@ void check_Prog(std::ostream *out, aA_program p)
 string getATypeName(aA_type type)
 {
     if (!type)
-        return;
+        return "nullptr";
     switch (type->type)
     {
     case (A_dataType::A_nativeTypeKind):
@@ -956,7 +962,7 @@ aA_type check_leftValValid(std::ostream *out, aA_leftVal leftVal)
 aA_type check_ArrayExpr(std::ostream *out, aA_arrayExpr ae)
 {
     if (!ae)
-        return;
+        return nullptr;
     /*
         Example:
             a[1] = 0;
@@ -1090,7 +1096,7 @@ void check_WhileStmt(std::ostream *out, aA_whileStmt ws)
 aA_type check_FuncCall(std::ostream *out, aA_fnCall fc)
 {
     if (!fc)
-        return;
+        return nullptr;
     // Example:
     //      foo(1, 2);
 

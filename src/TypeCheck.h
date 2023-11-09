@@ -38,5 +38,6 @@ aA_type check_rightValValid(std::ostream *out, aA_rightVal rightVal);
 aA_type check_arithExprValValid(std::ostream *out, aA_arithExpr arithExpr);
 aA_type check_arithBiopExpr(std::ostream * out, aA_arithBiOpExpr biopExpr);
 aA_type getVarDeclType(aA_varDecl x);
-aA_type idToType(std::ostream * out,A_pos pos,string id);
+aA_type get_TypeById(string id);
+aA_type check_leftValValid(std::ostream *out, aA_leftVal leftVal);
 
