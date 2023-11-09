@@ -239,6 +239,241 @@ void check_VarDec(std::ostream *out, aA_varDecl vd)
     return;
 }
 
+//实现对右值的检查
+
+aA_type getIntType()
+{
+    aA_type intType = new aA_type_;
+    intType->is_array = false;
+    intType->type = A_dataType::A_nativeTypeKind;
+    return intType;
+}
+
+aA_type check_BoolUnit(std::ostream *out, aA_boolUnit bu)
+{
+    if (!bu)
+        return nullptr;
+    switch (bu->kind)
+    {
+    case A_boolUnitType::A_comOpExprKind:
+    {
+        aA_type exprUnit1 = check_ExprUnit(out, bu->u.comExpr->left);
+        aA_type exprUnit2 = check_ExprUnit(out, bu->u.comExpr->right);
+        if (check_aATypeSame(exprUnit1, getIntType()) == false)
+            error_print(out, bu->u.comExpr->left->pos, "左值不是int类型");
+        if (check_aATypeSame(exprUnit2, getIntType()) == false)
+            error_print(out, bu->u.comExpr->right->pos, "右值不是int类型");
+        aA_type retType = new aA_type_;
+        retType->is_array = false;
+        retType->is_bool = true;
+        retType->pos = bu->pos;
+        return retType;
+    }
+    break;
+    case A_boolUnitType::A_boolExprKind:
+    {
+        return check_BoolExpr(out, bu->u.boolExpr);
+    }
+    break;
+    case A_boolUnitType::A_boolUOpExprKind:
+    {
+        return check_BoolUnit(out, bu->u.boolUOpExpr->cond);
+        break;
+    }
+    default:
+        break;
+    }
+    return nullptr;
+}
+aA_type check_BoolExpr(std::ostream *out, aA_boolExpr be)
+{
+    if (!be)
+        return nullptr;
+    switch (be->kind)
+    {
+    case A_boolExprType::A_boolBiOpExprKind:
+    {
+        aA_type type1 = check_BoolExpr(out, be->u.boolBiOpExpr->left);
+        aA_type type2 = check_BoolExpr(out, be->u.boolBiOpExpr->right);
+        if (check_aATypeSame(getBoolType(), type1) == false)
+            error_print(out, be->pos, "左值不是bool类型");
+        if (check_aATypeSame(getBoolType(), type2) == false)
+            error_print(out, be->pos, "右值不是bool类型");
+        aA_type retType = new aA_type_;
+        retType->is_array = false;
+        retType->is_bool = true;
+        retType->pos = be->pos;
+        return retType;
+    }
+    break;
+    case A_boolExprType::A_boolUnitKind:
+    {
+        aA_type type1 = check_BoolUnit(out, be->u.boolUnit);
+        if (check_aATypeSame(getBoolType(), type1) == false)
+            error_print(out, be->pos, "不是bool类型");
+        return type1;
+    }
+    break;
+
+    default:
+        break;
+    }
+    return nullptr;
+}
+
+aA_type check_ExprUnit(std::ostream *out, aA_exprUnit eu)
+{
+    // validate the expression unit and return the aA_type of it
+    // you may need to check if the type of this expression matches with its
+    // leftvalue or rightvalue, so return its aA_type would be a good way.
+    // Feel free to change the design pattern if you need.
+    if (!eu)
+        return nullptr;
+    aA_type ret;
+    switch (eu->kind)
+    {
+    case A_exprUnitType::A_idExprKind:
+    {
+        /* write your code here */
+        string name = *(eu->u.id);
+        auto t = get_TypeById(name);
+        if (t == nullptr)
+            error_print(out, eu->pos, "未找到变量名：" + name);
+        return t;
+    }
+    break;
+    case A_exprUnitType::A_numExprKind:
+    {
+        /* write your code here */
+        ret = new aA_type_;
+        ret->is_array = false;
+        ret->pos = eu->pos;
+        ret->type = A_dataType::A_nativeTypeKind;
+        ret->u.nativeType = A_nativeType::A_intTypeKind;
+        return ret;
+    }
+    break;
+    case A_exprUnitType::A_fnCallKind:
+    {
+        /* write your code here */
+        aA_type fnRetType = check_FuncCall(out, eu->u.callExpr);
+        return fnRetType;
+    }
+    break;
+    case A_exprUnitType::A_arrayExprKind:
+    {
+        /* write your code here */
+        return check_ArrayExpr(out, eu->u.arrayExpr);
+    }
+    break;
+    case A_exprUnitType::A_memberExprKind:
+    {
+        /* write your code here */
+        return check_MemberExpr(out, eu->u.memberExpr);
+    }
+    break;
+    case A_exprUnitType::A_arithExprKind:
+    {
+        /* write your code here */
+        return check_arithExprValValid(out, eu->u.arithExpr);
+    }
+    break;
+    case A_exprUnitType::A_arithUExprKind:
+    {
+        /* write your code here */
+        return check_ExprUnit(out, eu->u.arithUExpr->expr);
+    }
+    break;
+    }
+    return ret;
+}
+
+aA_type check_arithBiopExpr(std::ostream *out, aA_arithBiOpExpr biopExpr)
+{
+    aA_type operand1Type = check_arithExprValValid(out, biopExpr->left);
+    aA_type operand2Type = check_arithExprValValid(out, biopExpr->right);
+    if (check_aATypeSame(getIntType(), operand1Type) == false)
+        error_print(out, operand1Type->pos, "运算单元不是int类型");
+    if (check_aATypeSame(getIntType(), operand2Type) == false)
+        error_print(out, operand2Type->pos, "运算单元不是int类型");
+    return operand1Type;
+}
+
+aA_type check_arithExprValValid(std::ostream *out, aA_arithExpr arithExpr)
+{
+    if (arithExpr == nullptr)
+        return nullptr;
+    switch (arithExpr->kind)
+    {
+    case (A_arithExprType::A_exprUnitKind):
+    {
+        return check_ExprUnit(out, arithExpr->u.exprUnit);
+        break;
+    }
+    case (A_arithExprType::A_arithBiOpExprKind):
+    {
+        return check_arithBiopExpr(out, arithExpr->u.arithBiOpExpr);
+        break;
+    }
+    }
+    return nullptr;
+}
+
+aA_type check_rightValValid(std::ostream *out, aA_rightVal rightVal)
+{
+    if (rightVal == nullptr)
+        return nullptr;
+    switch (rightVal->kind)
+    {
+    case (A_rightValType::A_arithExprValKind):
+    {
+        return check_arithExprValValid(out, rightVal->u.arithExpr);
+        break;
+    }
+    case (A_rightValType::A_boolExprValKind):
+    {
+        return check_BoolExpr(out, rightVal->u.boolExpr);
+        break;
+    }
+    }
+    return nullptr;
+}
+
+//检查两个type是否相同
+bool check_aATypeSame(aA_type a, aA_type b)
+{
+    if (a->is_bool == true && b->is_bool == true)
+        return true;
+    else if (a->is_bool == true || b->is_bool == true)
+        return false;
+    else
+    {
+        if (a->is_array == b->is_array)
+        {
+            if (a->type == b->type)
+            {
+                if (a->type == A_dataType::A_nativeTypeKind)
+                {
+                    return true;
+                }
+                else
+                {
+                    if (*(a->u.structType) == *(b->u.structType))
+                    {
+                        return true;
+                    }
+                    else
+                        return false;
+                }
+            }
+            else
+                return false;
+        }
+        else
+            return false;
+    }
+}
+
 void check_VarDefScalar(std::ostream *out, aA_varDefScalar vd)
 {
     if (!vd)
@@ -761,220 +996,22 @@ aA_type getBoolType()
     return type;
 }
 
-bool check_aATypeSame(aA_type a, aA_type b)
+
+void check_WhileStmt(std::ostream *out, aA_whileStmt ws)
 {
-    if (a->is_bool == true && b->is_bool == true)
-        return true;
-    else if (a->is_bool == true || b->is_bool == true)
-        return false;
-    else
+    if (!ws)
+        return;
+    check_BoolExpr(out, ws->boolExpr);
+    addCurScope();
+    for (aA_codeBlockStmt s : ws->whileStmts)
     {
-        if (a->is_array == b->is_array)
-        {
-            if (a->type == b->type)
-            {
-                if (a->type == A_dataType::A_nativeTypeKind)
-                {
-                    return true;
-                }
-                else
-                {
-                    if (*(a->u.structType) == *(b->u.structType))
-                    {
-                        return true;
-                    }
-                    else
-                        return false;
-                }
-            }
-            else
-                return false;
-        }
-        else
-            return false;
+        check_CodeblockStmt(out, s);
     }
+    minusCurScope();
+    return;
 }
 
-aA_type getIntType()
-{
-    aA_type intType = new aA_type_;
-    intType->is_array = false;
-    intType->type = A_dataType::A_nativeTypeKind;
-    return intType;
-}
-
-aA_type check_BoolUnit(std::ostream *out, aA_boolUnit bu)
-{
-    if (!bu)
-        return nullptr;
-    switch (bu->kind)
-    {
-    case A_boolUnitType::A_comOpExprKind:
-    {
-        aA_type exprUnit1 = check_ExprUnit(out, bu->u.comExpr->left);
-        aA_type exprUnit2 = check_ExprUnit(out, bu->u.comExpr->right);
-        if (check_aATypeSame(exprUnit1, getIntType()) == false)
-            error_print(out, bu->u.comExpr->left->pos, "左值不是int类型");
-        if (check_aATypeSame(exprUnit2, getIntType()) == false)
-            error_print(out, bu->u.comExpr->right->pos, "右值不是int类型");
-        aA_type retType = new aA_type_;
-        retType->is_array = false;
-        retType->is_bool = true;
-        retType->pos = bu->pos;
-        return retType;
-    }
-    break;
-    case A_boolUnitType::A_boolExprKind:
-    {
-        return check_BoolExpr(out, bu->u.boolExpr);
-    }
-    break;
-    case A_boolUnitType::A_boolUOpExprKind:
-    {
-        return check_BoolUnit(out, bu->u.boolUOpExpr->cond);
-        break;
-    }
-    default:
-        break;
-    }
-    return nullptr;
-}
-
-aA_type check_BoolExpr(std::ostream *out, aA_boolExpr be)
-{
-    if (!be)
-        return nullptr;
-    switch (be->kind)
-    {
-    case A_boolExprType::A_boolBiOpExprKind:
-    {
-        aA_type type1 = check_BoolExpr(out, be->u.boolBiOpExpr->left);
-        aA_type type2 = check_BoolExpr(out, be->u.boolBiOpExpr->right);
-        if (check_aATypeSame(getBoolType(), type1) == false)
-            error_print(out, be->pos, "左值不是bool类型");
-        if (check_aATypeSame(getBoolType(), type2) == false)
-            error_print(out, be->pos, "右值不是bool类型");
-        aA_type retType = new aA_type_;
-        retType->is_array = false;
-        retType->is_bool = true;
-        retType->pos = be->pos;
-        return retType;
-    }
-    break;
-    case A_boolExprType::A_boolUnitKind:
-    {
-        aA_type type1 = check_BoolUnit(out, be->u.boolUnit);
-        if (check_aATypeSame(getBoolType(), type1) == false)
-            error_print(out, be->pos, "不是bool类型");
-        return type1;
-    }
-    break;
-
-    default:
-        break;
-    }
-    return nullptr;
-}
-
-aA_type idToType(std::ostream *out, A_pos pos, string id)
-{
-    if (curFuncParams.find(id) != curFuncParams.end())
-        return curFuncParams[id];
-    else if (token2Type.find(id) != token2Type.end())
-        return token2Type[id];
-    else if (func2Param.find(id) != func2Param.end())
-        error_print(out, pos, "Val name should not be func name");
-    return nullptr;
-}
-
-aA_type check_ExprUnit(std::ostream *out, aA_exprUnit eu)
-{
-    // validate the expression unit and return the aA_type of it
-    // you may need to check if the type of this expression matches with its
-    // leftvalue or rightvalue, so return its aA_type would be a good way.
-    // Feel free to change the design pattern if you need.
-    if (!eu)
-        return nullptr;
-    aA_type ret;
-    switch (eu->kind)
-    {
-    case A_exprUnitType::A_idExprKind:
-    {
-        /* write your code here */
-        string name = *(eu->u.id);
-        auto t = idToType(out, eu->pos, name);
-        if (t == nullptr)
-            error_print(out, eu->pos, "未找到变量名：" + name);
-        return t;
-    }
-    break;
-    case A_exprUnitType::A_numExprKind:
-    {
-        /* write your code here */
-        ret = new aA_type_;
-        ret->is_array = false;
-        ret->pos = eu->pos;
-        ret->type = A_dataType::A_nativeTypeKind;
-        ret->u.nativeType = A_nativeType::A_intTypeKind;
-        return ret;
-    }
-    break;
-    case A_exprUnitType::A_fnCallKind:
-    {
-        /* write your code here */
-        aA_type fnRetType = check_FuncCall(out, eu->u.callExpr);
-        return fnRetType;
-    }
-    break;
-    case A_exprUnitType::A_arrayExprKind:
-    {
-        /* write your code here */
-        return check_ArrayExpr(out, eu->u.arrayExpr);
-    }
-    break;
-    case A_exprUnitType::A_memberExprKind:
-    {
-        /* write your code here */
-        return check_MemberExpr(out, eu->u.memberExpr);
-    }
-    break;
-    case A_exprUnitType::A_arithExprKind:
-    {
-        /* write your code here */
-        return check_arithExprValValid(out, eu->u.arithExpr);
-    }
-    break;
-    case A_exprUnitType::A_arithUExprKind:
-    {
-        /* write your code here */
-        return check_ExprUnit(out, eu->u.arithUExpr->expr);
-    }
-    break;
-    }
-    return ret;
-}
-
-aA_type getVarDeclType(aA_varDecl x)
-{
-    aA_type ret = nullptr;
-    switch (x->kind)
-    {
-    case (A_varDeclType::A_varDeclScalarKind):
-    {
-        x->u.declScalar->type->is_array = false;
-        return x->u.declScalar->type;
-    }
-    break;
-    case (A_varDeclType::A_varDeclArrayKind):
-    {
-        x->u.declArray->type->is_array = true;
-        return x->u.declArray->type;
-    }
-    break;
-    }
-    return ret;
-}
-
+//实际上来是不需要返回type值，因为fncall不作为右值
 aA_type check_FuncCall(std::ostream *out, aA_fnCall fc)
 {
     if (!fc)
@@ -1000,78 +1037,12 @@ aA_type check_FuncCall(std::ostream *out, aA_fnCall fc)
     }
     return g_fnDef2Type[fnName];
 }
-
-void check_WhileStmt(std::ostream *out, aA_whileStmt ws)
-{
-    if (!ws)
-        return;
-    check_BoolExpr(out, ws->boolExpr);
-    addCurScope();
-    for (aA_codeBlockStmt s : ws->whileStmts)
-    {
-        check_CodeblockStmt(out, s);
-    }
-    minusCurScope();
-    return;
-}
-
 void check_CallStmt(std::ostream *out, aA_callStmt cs)
 {
     if (!cs)
         return;
     check_FuncCall(out, cs->fnCall);
     return;
-}
-
-aA_type check_arithBiopExpr(std::ostream *out, aA_arithBiOpExpr biopExpr)
-{
-    aA_type operand1Type = check_arithExprValValid(out, biopExpr->left);
-    aA_type operand2Type = check_arithExprValValid(out, biopExpr->right);
-    if (check_aATypeSame(getIntType(), operand1Type) == false)
-        error_print(out, operand1Type->pos, "运算单元不是int类型");
-    if (check_aATypeSame(getIntType(), operand2Type) == false)
-        error_print(out, operand2Type->pos, "运算单元不是int类型");
-    return operand1Type;
-}
-
-aA_type check_arithExprValValid(std::ostream *out, aA_arithExpr arithExpr)
-{
-    if (arithExpr == nullptr)
-        return nullptr;
-    switch (arithExpr->kind)
-    {
-    case (A_arithExprType::A_exprUnitKind):
-    {
-        return check_ExprUnit(out, arithExpr->u.exprUnit);
-        break;
-    }
-    case (A_arithExprType::A_arithBiOpExprKind):
-    {
-        return check_arithBiopExpr(out, arithExpr->u.arithBiOpExpr);
-        break;
-    }
-    }
-    return nullptr;
-}
-
-aA_type check_rightValValid(std::ostream *out, aA_rightVal rightVal)
-{
-    if (rightVal == nullptr)
-        return nullptr;
-    switch (rightVal->kind)
-    {
-    case (A_rightValType::A_arithExprValKind):
-    {
-        return check_arithExprValValid(out, rightVal->u.arithExpr);
-        break;
-    }
-    case (A_rightValType::A_boolExprValKind):
-    {
-        return check_BoolExpr(out, rightVal->u.boolExpr);
-        break;
-    }
-    }
-    return nullptr;
 }
 
 void check_ReturnStmt(std::ostream *out, aA_returnStmt rs)
