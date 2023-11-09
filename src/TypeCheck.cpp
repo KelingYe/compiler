@@ -835,6 +835,16 @@ aA_type check_BoolExpr(std::ostream *out, aA_boolExpr be)
     return nullptr;
 }
 
+aA_type idToType(std::ostream * out,A_pos pos,string id)
+{
+    if (curFuncParams.find(id) != curFuncParams.end())
+        return curFuncParams[id];
+    else if (g_token2Type.find(id) != g_token2Type.end())
+        return g_token2Type[id];
+    else if(func2Param.find(id)!= func2Param.end())
+        error_print(out,pos,"Val name should not be func name");
+    return nullptr;
+}
 
 aA_type check_ExprUnit(std::ostream *out, aA_exprUnit eu)
 {
@@ -850,16 +860,30 @@ aA_type check_ExprUnit(std::ostream *out, aA_exprUnit eu)
     case A_exprUnitType::A_idExprKind:
     {
         /* write your code here */
+        string name = *(eu->u.id);
+        auto t = idToType(out,eu->pos,name);
+        if (t == nullptr)
+            error_print(out, eu->pos, "未找到变量名：" + name);
+        return t;
     }
     break;
     case A_exprUnitType::A_numExprKind:
     {
         /* write your code here */
+        ret = new aA_type_;
+        ret->is_array = false;
+        ret->pos = eu->pos;
+        ret->type = A_dataType::A_nativeTypeKind;
+        ret->u.nativeType = A_nativeType::A_intTypeKind;
+        return ret;
+
     }
     break;
     case A_exprUnitType::A_fnCallKind:
     {
         /* write your code here */
+        aA_type fnRetType = check_FuncCall(out,eu->u.callExpr);
+        return fnRetType;
     }
     break;
     case A_exprUnitType::A_arrayExprKind:
@@ -886,7 +910,28 @@ aA_type check_ExprUnit(std::ostream *out, aA_exprUnit eu)
     return ret;
 }
 
-void check_FuncCall(std::ostream *out, aA_fnCall fc)
+aA_type getVarDeclType(aA_varDecl x)
+{
+    aA_type ret = nullptr;
+    switch (x->kind)
+    {
+    case (A_varDeclType::A_varDeclScalarKind):
+    {
+        x->u.declScalar->type->is_array = false;
+        return x->u.declScalar->type;
+    }
+    break;
+    case (A_varDeclType::A_varDeclArrayKind):
+    {
+        x->u.declArray->type->is_array = true;
+        return x->u.declArray->type;
+    }
+    break;
+    }
+    return ret;
+}
+
+aA_type check_FuncCall(std::ostream *out, aA_fnCall fc)
 {
     if (!fc)
         return;
@@ -894,7 +939,20 @@ void check_FuncCall(std::ostream *out, aA_fnCall fc)
     //      foo(1, 2);
 
     /* write your code here */
-    return;
+    string fnName = *(fc->fn);
+    if(g_fnDef2Type.find(fnName)==g_fnDef2Type.end())
+        error_print(out,fc->pos,"未找到函数名："+ fnName);
+    auto varDeclVec = func2Param[fnName];
+    if(varDeclVec.size()!=fc->vals.size())
+        error_print(out, fc->pos, "函数调用参数数量不合法："+fnName);
+    for(int i=0;i<varDeclVec.size();i++){
+        auto varDecl = varDeclVec[i];
+        auto rightVal = fc->vals[i];
+        if(!check_aATypeSame(getVarDeclType(varDecl),check_rightValValid(out,rightVal))){
+            error_print(out, fc->pos, "参数 " + std::to_string(i) + " 类型不合法：" + fnName);
+        }
+    }
+    return g_fnDef2Type[fnName];
 }
 
 void check_WhileStmt(std::ostream *out, aA_whileStmt ws)

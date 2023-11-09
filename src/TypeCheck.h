@@ -29,11 +29,13 @@ void check_IfStmt(std::ostream* out, aA_ifStmt is);
 aA_type check_BoolExpr(std::ostream* out, aA_boolExpr be);
 aA_type check_BoolUnit(std::ostream* out, aA_boolUnit bu);
 aA_type check_ExprUnit(std::ostream* out, aA_exprUnit eu);
-void check_FuncCall(std::ostream* out, aA_fnCall fc);
+aA_type check_FuncCall(std::ostream* out, aA_fnCall fc);
 void check_WhileStmt(std::ostream* out, aA_whileStmt ws);
 void check_CallStmt(std::ostream* out, aA_callStmt cs);
 void check_ReturnStmt(std::ostream* out, aA_returnStmt rs);
 aA_type check_rightValValid(std::ostream *out, aA_rightVal rightVal);
 aA_type check_arithExprValValid(std::ostream *out, aA_arithExpr arithExpr);
 aA_type check_arithBiopExpr(std::ostream * out, aA_arithBiOpExpr biopExpr);
+aA_type getVarDeclType(aA_varDecl x);
+aA_type idToType(std::ostream * out,A_pos pos,string id);
 
