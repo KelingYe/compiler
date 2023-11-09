@@ -1,14 +1,14 @@
 #include "TypeCheck.h"
 
 // maps to store the type information. Feel free to design new data structures if you need.
-typeMap g_token2Type;         // global token ids to type
+typeMap token2Type;           // token ids to type(既包括全局也包括局部)
 typeMap funcparam_token2Type; // func params token ids to type
 typeMap g_fnDec2Type;         // 存储声明过的函数及其返回值
 typeMap g_fnDef2Type;         // 存储已定义过的函数及其返回值
-typeMap curFuncParams;
+typeMap curFuncParams;        // 存储当前函数的参数列表中的每个参数id对应的type
 std::string cur_func_name = "";
-paramMemberMap func2Param; // funtion name以及对应的函数列表
-paramMemberMap struct2Members;  //struct name 以及对应的成员参数
+paramMemberMap func2Param;     // funtion name以及对应的函数列表
+paramMemberMap struct2Members; // struct name 以及对应的成员参数
 
 // 全局层数为1, 进入函数 ++, 离开函数 --
 int cur_scope = 1;
@@ -22,8 +22,8 @@ void addCurScope()
 void minusCurScope()
 {
     vector<string> allDeleteNames;
-    // kill all the variables
-    for (auto i : g_token2Type)
+    // 清除 all the variables
+    for (auto i : token2Type)
     {
         // 也就是在存变量表时，需要存该变量的作用域
         if (i.second->cur_scope == cur_scope)
@@ -33,7 +33,7 @@ void minusCurScope()
         }
     }
     for (auto i : allDeleteNames)
-        g_token2Type.erase(i);
+        token2Type.erase(i);
     cur_scope--;
 }
 
@@ -106,26 +106,36 @@ void check_Prog(std::ostream *out, aA_program p)
         break;
         case A_programFnDefKind:
         {
-            check_FnDef(out, ele->u.fnDef);
+            check_FnDef1(out, ele->u.fnDef);
         }
         break;
         }
     }
 
+    struct2Members.clear();
     for (auto ele : p->programElements)
     {
-    }
+        switch (ele->kind)
+        {
 
-    for (auto ele : p->programElements)
-    {
+        case A_programStructDefKind:
+        {
+            check_StructDef(out, ele->u.structDef);
+        }
+        break;
+        case A_programFnDefKind:
+        {
+            check_FnDef1(out, ele->u.fnDef);
+        }
+        break;
+        }
     }
 
     (*out) << "Typecheck passed!" << std::endl;
     return;
 }
 
-// 根据type 获得名字
-//  without array
+// 根据type 获得名字(这里只有Var有，struct类型本身是没有的aA_type )
 string getATypeName(aA_type type)
 {
     if (!type)
@@ -150,15 +160,15 @@ void check_type_valid(std::ostream *out, aA_type varType)
     if (!varType)
         return;
     string name = getATypeName(varType);
-    if (name != "int" && struct2Members.find(name) == struct2Members.end()) // end如何求解？
+    if (name != "int" && struct2Members.find(name) == struct2Members.end())
         error_print(out, varType->pos, "Undeclared variable type!");
 }
 
-// 检查是否重复声明（可以var，struct一起检查，并且不需要判断type，因为它们的名字是唯一的）//后续可以再加上fn
+// 检查是否重复声明（可以var，struct一起检查，并且不需要判断type，因为它们的名字是唯一的）
 void check_multiDeclaration(std::ostream *out, string name, A_pos pos)
 {
 
-    if (g_token2Type.find(name) != g_token2Type.end())
+    if (token2Type.find(name) != token2Type.end())
     {
         error_print(out, pos, "This name " + name + " has been declared in variable map!");
     }
@@ -192,7 +202,8 @@ void check_VarDeclScalar(std::ostream *out, aA_varDeclScalar vd)
     check_multiDeclaration(out, name, pos);
     // 保存信息至变量表
     type->cur_scope = cur_scope;
-    g_token2Type[name] = type;
+    type->is_array = false;
+    token2Type[name] = type;
 }
 
 void check_VarDeclArray(std::ostream *out, aA_varDeclArray vd)
@@ -205,9 +216,11 @@ void check_VarDeclArray(std::ostream *out, aA_varDeclArray vd)
     A_pos pos = vd->pos;
     int len = vd->len;
     check_multiDeclaration(out, name, pos);
-    // 保存信息至变量表  len没有用上，但是后续可能要用这个检查  ？？？？
+    // 保存信息至变量表
     type->cur_scope = cur_scope;
-    g_token2Type[name] = type;
+    type->len = len;
+    type->is_array = true;
+    token2Type[name] = type;
 }
 
 void check_VarDec(std::ostream *out, aA_varDecl vd)
@@ -215,11 +228,11 @@ void check_VarDec(std::ostream *out, aA_varDecl vd)
     if (!vd)
         return;
 
-    if (vd->kind == A_varDeclStmtType::A_varDeclKind)
+    if (vd->kind == A_varDeclType::A_varDeclScalarKind)
     {
         check_VarDeclScalar(out, vd->u.declScalar);
     }
-    else if (vd->kind == A_varDeclStmtType::A_varDefKind)
+    else if (vd->kind == A_varDeclType::A_varDeclArrayKind)
     {
         check_VarDeclArray(out, vd->u.declArray);
     }
@@ -237,10 +250,12 @@ void check_VarDefScalar(std::ostream *out, aA_varDefScalar vd)
     string name = *(vd->id);
     A_pos pos = vd->pos;
     check_multiDeclaration(out, name, pos);
-    // 保存信息至变量表  val没有用上，但是后续可能要用这个检查  ？？？？
+    // 检查右值 ？？？
+    //  保存信息至变量表  (val没有用上，？？？）
     aA_rightVal val = vd->val;
+    type->is_array = false;
     type->cur_scope = cur_scope;
-    g_token2Type[name] = type;
+    token2Type[name] = type;
 }
 
 void check_VarDefArray(std::ostream *out, aA_varDefArray vd)
@@ -254,11 +269,14 @@ void check_VarDefArray(std::ostream *out, aA_varDefArray vd)
     string name = *(vd->id);
     A_pos pos = vd->pos;
     check_multiDeclaration(out, name, pos);
-    // 保存信息至变量表  len,vals没有用上，但是后续可能要用这个检查  ？？？
+    // 检查右值
+    //  保存信息至变量表  vals没有用上 ？？？
     int len = vd->len;
     vector<aA_rightVal> vals = vd->vals;
     type->cur_scope = cur_scope;
-    g_token2Type[name] = type;
+    type->len = len;
+    type->is_array = true;
+    token2Type[name] = type;
 }
 
 void check_VarDef(std::ostream *out, aA_varDef vd)
@@ -266,11 +284,11 @@ void check_VarDef(std::ostream *out, aA_varDef vd)
     if (!vd)
         return;
     string name;
-    if (vd->kind == A_varDeclStmtType::A_varDeclKind)
+    if (vd->kind == A_varDefType::A_varDefScalarKind)
     {
         check_VarDefScalar(out, vd->u.defScalar);
     }
-    else if (vd->kind == A_varDeclStmtType::A_varDefKind)
+    else if (vd->kind == A_varDefType::A_varDefScalarKind)
     {
         check_VarDefArray(out, vd->u.defArray);
     }
@@ -302,6 +320,48 @@ void check_VarDecl(std::ostream *out, aA_varDeclStmt vd)
     }
     return;
 }
+// 根据 varDecl得到type类型
+aA_type getVarDeclType(aA_varDecl x)
+{
+    aA_type ret = nullptr;
+    switch (x->kind)
+    {
+    case (A_varDeclType::A_varDeclScalarKind):
+    {
+        x->u.declScalar->type->is_array = false;
+        return x->u.declScalar->type;
+    }
+    break;
+    case (A_varDeclType::A_varDeclArrayKind):
+    {
+        x->u.declArray->type->is_array = true;
+        return x->u.declArray->type;
+    }
+    break;
+    }
+    return ret;
+}
+// 根据 varDecl得到name
+string getVarDeclName(aA_varDecl x)
+{
+    if (x == nullptr)
+        return nullptr;
+    switch (x->kind)
+    {
+
+    case (A_varDeclType::A_varDeclArrayKind):
+    {
+        return *(x->u.declArray->id);
+    }
+    break;
+    case (A_varDeclType::A_varDeclScalarKind):
+    {
+        return *(x->u.declScalar->id);
+    }
+    break;
+    }
+    return "";
+}
 
 // 还需检查变量重名+所有变量类型合法  既适用于struct,也适用于函数传输的函数
 void check_params(std::ostream *out, vector<aA_varDecl> varDeclList)
@@ -310,26 +370,11 @@ void check_params(std::ostream *out, vector<aA_varDecl> varDeclList)
     vector<string> paramNames;
     for (auto varDecl : varDeclList)
     {
-        string name;
-        // 判断变量类型
-        if (varDecl->kind == A_varDeclStmtType::A_varDeclKind)
-        {
 
-            aA_varDeclScalar vd = varDecl->u.declScalar;
-            // 检查类型
-            aA_type type = vd->type;
-            check_type_valid(out, type);
-            name = *(vd->id);
-        }
-        else if (varDecl->kind == A_varDeclStmtType::A_varDefKind)
-        {
-            aA_varDeclArray vd = varDecl->u.declArray;
-            // 检查类型
-            aA_type type = vd->type;
-            check_type_valid(out, type);
-            name = *(vd->id);
-        }
-
+        string name = getVarDeclName(varDecl);
+        aA_type type = getVarDeclType(varDecl);
+        // 检查类型
+        check_type_valid(out, type);
         // 查看是否重名
         for (auto paramName : paramNames)
         {
@@ -367,7 +412,6 @@ void check_StructDef(std::ostream *out, aA_structDef sd)
     return;
 }
 
-// paramMemberMap func2Param;
 void check_FnDecl(std::ostream *out, aA_fnDecl fd)
 {
     // Example:
@@ -399,7 +443,7 @@ void check_FnDeclStmt(std::ostream *out, aA_fnDeclStmt fd)
     A_pos pos = fd->pos;
     check_multiDeclaration(out, name, pos);
     check_FnDecl(out, fd->fnDecl);
-    //将其加入到全局函数声明表中
+    // 将其加入到全局函数声明表中
     g_fnDec2Type[name] = fd->fnDecl->type;
     func2Param[name] = fd->fnDecl->paramDecl->varDecls;
 
@@ -432,23 +476,23 @@ void check_FnDef1(std::ostream *out, aA_fnDef fd)
     A_pos pos = fd->pos;
     check_multiFndef(out, name, pos);
     check_FnDecl(out, fd->fnDecl);
-    //将其加入到全局函数定义表,在判断后选择是否加入全局函数声明表
-    g_fnDef2Type[name]=fd->fnDecl->type;
-    cur_func_name = name;
-    if(!g_fnDec2Type[name]){
-        g_fnDec2Type[name]=fd->fnDecl->type;
+    // 将其加入到全局函数定义表,在判断后选择是否加入全局函数声明表
+    g_fnDef2Type[name] = fd->fnDecl->type;
+    if (!g_fnDec2Type[name])
+    {
+        g_fnDec2Type[name] = fd->fnDecl->type;
         func2Param[name] = fd->fnDecl->paramDecl->varDecls;
     }
-    else
+    else // 这里可能会有重载的问题，但是本次lab不做考虑所以只处理定义与声明不一致的问题 ？？？
     {
-        // 这里可能会有重载的问题，但是本次lab不做处理
+        // if(g_fnDec2Type[name]->ty)
     }
 
     return;
 }
 
 // 向内部检查
-void check_FnDef1(std::ostream *out, aA_fnDef fd)
+void check_FnDef2(std::ostream *out, aA_fnDef fd)
 {
     // Example:
     //      fn main(a:int, b:int)->int{
@@ -462,29 +506,16 @@ void check_FnDef1(std::ostream *out, aA_fnDef fd)
     // 函数全局已经检查过可以向内部检查
     string name = *(fd->fnDecl->id);
     vector<aA_varDecl> varDeclVec = func2Param[name];
+    // 存储所有的函数参数
     for (auto varDecl : varDeclVec)
     {
-        string name;
-        aA_type type;
-        // 判断变量类型
-        if (varDecl->kind == A_varDeclType::A_varDeclScalarKind)
-        {
-
-            aA_varDeclScalar vd = varDecl->u.declScalar;
-            type = vd->type;
-            name = *(vd->id);
-        }
-        else if (varDecl->kind == A_varDeclType::A_varDeclArrayKind)
-        {
-            aA_varDeclArray vd = varDecl->u.declArray;
-            type = vd->type;
-            name = *(vd->id);
-        }
+        string name = getVarDeclName(varDecl);
+        aA_type type = getVarDeclType(varDecl);
         curFuncParams[name] = type;
     }
-
+    // 获取当前的函数名
+    cur_func_name = name;
     addCurScope();
-
     for (auto stmt : fd->stmts)
     {
         check_CodeblockStmt(out, stmt);
@@ -539,16 +570,20 @@ struct aA_leftVal_
 };
 */
 
-// only gets the parameter type!!!
+// only gets the parameter type!!!（但是struct类型是获取不了的）
 aA_type get_TypeById(string id)
 {
     // 先查询当前函数
     if (curFuncParams.find(id) != curFuncParams.end())
         return curFuncParams[id];
-    else if (g_token2Type.find(id) != g_token2Type.end())
-        return g_token2Type[id];
-    // else if (struct2Members.find(id) != struct2Members.end())
-    //     return   
+    else if (token2Type.find(id) != token2Type.end())
+        return token2Type[id];
+    else if (struct2Members.find(id) != struct2Members.end())
+    {
+        aA_type atype = new aA_type_;
+        atype->type = A_structTypeKind;
+        return atype;
+    }
     return NULL;
 }
 
@@ -556,7 +591,6 @@ void check_AssignStmt(std::ostream *out, aA_assignStmt as)
 {
     if (!as)
         return;
-    string name;
     switch (as->leftVal->kind)
     {
     case A_leftValType::A_varValKind:
@@ -567,7 +601,11 @@ void check_AssignStmt(std::ostream *out, aA_assignStmt as)
         // 获得左值的type
         aA_type type = get_TypeById(name);
         if (type == nullptr)
+        {
+
             error_print(out, as->leftVal->pos, "Left Val here is not declared!");
+        }
+
         // return leftValType;
     }
     break;
@@ -582,14 +620,13 @@ void check_AssignStmt(std::ostream *out, aA_assignStmt as)
                 };
 
          */
-        check_ArrayExpr(out,as->leftVal->u.arrExpr);
-
+        check_ArrayExpr(out, as->leftVal->u.arrExpr);
     }
     break;
     case A_leftValType::A_memberValKind:
     {
         /* write your code here */
-        check_MemberExpr(out,as->leftVal->u.memberExpr);
+        check_MemberExpr(out, as->leftVal->u.memberExpr);
     }
     break;
     }
@@ -606,47 +643,48 @@ aA_type check_ArrayExpr(std::ostream *out, aA_arrayExpr ae)
         Hint:
             check the validity of the array index
     */
-     if (!ae)    return nullptr;
+    if (!ae)
+        return nullptr;
     string arrName = *(ae->arr);
-   
+
     aA_type arrType = get_TypeById(arrName);
     if (arrType == nullptr)
         error_print(out, ae->pos, "Array Name here is not declared!");
     // check arrType
     if (arrType->is_array == false)
         error_print(out, ae->pos, "This variable " + arrName + " is a scalar type!");
-    switch (ae->idx->kind){
-        case (A_indexExprKind::A_numIndexKind):
-        {
-            // 不直接让retType = arrType的目的是害怕retType->的修改也会影响到arrType的修改
-            aA_type retType = new aA_type_;
-            retType->cur_scope = arrType->cur_scope;
-            retType->is_array = false;
-            retType->pos = arrType->pos;
-            retType->type = arrType->type;
-            retType->u = arrType->u;
-            return retType;
-        }
-        break;
-        case (A_indexExprKind::A_idIndexKind):
-        {
-            string bTypeName = *(ae->idx->u.id);
-            aA_type bType = get_TypeById(bTypeName);
-            if (bType == nullptr)
-                error_print(out, ae->idx->pos, "The name of the val in array brackets here is not declared!");
-            if (bType->is_array == true)
-                error_print(out, ae->idx->pos, "The name of the val in array brackets here is an array!");
-            if (bType->type == A_dataType::A_structTypeKind)
-                error_print(out, ae->idx->pos, "The name of the val in array brackets here is a struct!");
-            aA_type retType = new aA_type_;
-            retType->cur_scope = arrType->cur_scope;
-            retType->is_array = false;
-            retType->pos = arrType->pos;
-            retType->type = arrType->type;
-            retType->u = arrType->u;
-            return retType;
-        }
-
+    switch (ae->idx->kind)
+    {
+    case (A_indexExprKind::A_numIndexKind):
+    {
+        // 不直接让retType = arrType的目的是害怕retType->的修改也会影响到arrType的修改
+        aA_type retType = new aA_type_;
+        retType->cur_scope = arrType->cur_scope;
+        retType->is_array = false;
+        retType->pos = arrType->pos;
+        retType->type = arrType->type;
+        retType->u = arrType->u;
+        return retType;
+    }
+    break;
+    case (A_indexExprKind::A_idIndexKind):
+    {
+        string bTypeName = *(ae->idx->u.id);
+        aA_type bType = get_TypeById(bTypeName);
+        if (bType == nullptr)
+            error_print(out, ae->idx->pos, "The name of the val in array brackets here is not declared!");
+        if (bType->is_array == true)
+            error_print(out, ae->idx->pos, "The name of the val in array brackets here is an array!");
+        if (bType->type == A_dataType::A_structTypeKind)
+            error_print(out, ae->idx->pos, "The name of the val in array brackets here is a struct!");
+        aA_type retType = new aA_type_;
+        retType->cur_scope = arrType->cur_scope;
+        retType->is_array = false;
+        retType->pos = arrType->pos;
+        retType->type = arrType->type;
+        retType->u = arrType->u;
+        return retType;
+    }
     }
     return nullptr;
 }
@@ -673,21 +711,20 @@ aA_type check_MemberExpr(std::ostream *out, aA_memberExpr me)
         error_print(out, me->pos, "The variable " + structVarName + " used here is a int!");
     // now we confirm a is a struct
     string innerVarName = *(me->memberId);
-    
+
     // check innerVarName in struct or not
     vector<aA_varDecl> varDeclVec = struct2Members[*(structVarType->u.structType)];
     aA_type matchType = nullptr;
     for (auto varDecl : varDeclVec)
     {
         // if(varDecl==nullptr)
-            // std::cout<<"Should not be a nullptr in varDecl"<<std::endl;
+        // std::cout<<"Should not be a nullptr in varDecl"<<std::endl;
         string varDeclName = getVarDeclName(varDecl);
         // if(TypeCheckDebug) std::cout<<"This var decl name is "<<varDeclName<<std::endl;
-        if (varDeclName == innerVarName){
+        if (varDeclName == innerVarName)
+        {
             matchType = getVarDeclType(varDecl);
-            
         }
-            
     }
     if (matchType == nullptr)
         error_print(out, me->pos, "The inner variable " + innerVarName + " used in this struct is not defined!");
@@ -716,18 +753,19 @@ void check_IfStmt(std::ostream *out, aA_ifStmt is)
     return;
 }
 
-aA_type getBoolType(){
+aA_type getBoolType()
+{
     aA_type type = new aA_type_;
-    type->is_bool=true;
-    type->is_array=false;
+    type->is_bool = true;
+    type->is_array = false;
     return type;
 }
 
 bool check_aATypeSame(aA_type a, aA_type b)
 {
-    if(a->is_bool==true && b->is_bool==true)
+    if (a->is_bool == true && b->is_bool == true)
         return true;
-    else if(a->is_bool==true || b->is_bool==true)
+    else if (a->is_bool == true || b->is_bool == true)
         return false;
     else
     {
@@ -755,13 +793,13 @@ bool check_aATypeSame(aA_type a, aA_type b)
         else
             return false;
     }
-
 }
 
-aA_type getIntType(){
+aA_type getIntType()
+{
     aA_type intType = new aA_type_;
-    intType->is_array=false;
-    intType->type=A_dataType::A_nativeTypeKind;
+    intType->is_array = false;
+    intType->type = A_dataType::A_nativeTypeKind;
     return intType;
 }
 
@@ -773,11 +811,11 @@ aA_type check_BoolUnit(std::ostream *out, aA_boolUnit bu)
     {
     case A_boolUnitType::A_comOpExprKind:
     {
-        aA_type exprUnit1 = check_ExprUnit(out,bu->u.comExpr->left);
-        aA_type exprUnit2 = check_ExprUnit(out,bu->u.comExpr->right);
-        if(check_aATypeSame(exprUnit1,getIntType())==false)
-            error_print(out,bu->u.comExpr->left->pos,"左值不是int类型");
-        if(check_aATypeSame(exprUnit2,getIntType())==false)
+        aA_type exprUnit1 = check_ExprUnit(out, bu->u.comExpr->left);
+        aA_type exprUnit2 = check_ExprUnit(out, bu->u.comExpr->right);
+        if (check_aATypeSame(exprUnit1, getIntType()) == false)
+            error_print(out, bu->u.comExpr->left->pos, "左值不是int类型");
+        if (check_aATypeSame(exprUnit2, getIntType()) == false)
             error_print(out, bu->u.comExpr->right->pos, "右值不是int类型");
         aA_type retType = new aA_type_;
         retType->is_array = false;
@@ -788,11 +826,12 @@ aA_type check_BoolUnit(std::ostream *out, aA_boolUnit bu)
     break;
     case A_boolUnitType::A_boolExprKind:
     {
-        return check_BoolExpr(out,bu->u.boolExpr);
+        return check_BoolExpr(out, bu->u.boolExpr);
     }
-        break;
-    case A_boolUnitType::A_boolUOpExprKind:{
-        return check_BoolUnit(out,bu->u.boolUOpExpr->cond);
+    break;
+    case A_boolUnitType::A_boolUOpExprKind:
+    {
+        return check_BoolUnit(out, bu->u.boolUOpExpr->cond);
         break;
     }
     default:
@@ -807,42 +846,44 @@ aA_type check_BoolExpr(std::ostream *out, aA_boolExpr be)
         return nullptr;
     switch (be->kind)
     {
-        case A_boolExprType::A_boolBiOpExprKind:{
-            aA_type type1 = check_BoolExpr(out,be->u.boolBiOpExpr->left);
-            aA_type type2 = check_BoolExpr(out,be->u.boolBiOpExpr->right);
-            if(check_aATypeSame(getBoolType(), type1)==false)
-                error_print(out,be->pos,"左值不是bool类型");
-            if(check_aATypeSame(getBoolType(), type2)==false)
-                error_print(out,be->pos,"右值不是bool类型");
-            aA_type retType = new aA_type_;
-            retType->is_array=false;
-            retType->is_bool=true;
-            retType->pos=be->pos;
-            return retType;
-        }
+    case A_boolExprType::A_boolBiOpExprKind:
+    {
+        aA_type type1 = check_BoolExpr(out, be->u.boolBiOpExpr->left);
+        aA_type type2 = check_BoolExpr(out, be->u.boolBiOpExpr->right);
+        if (check_aATypeSame(getBoolType(), type1) == false)
+            error_print(out, be->pos, "左值不是bool类型");
+        if (check_aATypeSame(getBoolType(), type2) == false)
+            error_print(out, be->pos, "右值不是bool类型");
+        aA_type retType = new aA_type_;
+        retType->is_array = false;
+        retType->is_bool = true;
+        retType->pos = be->pos;
+        return retType;
+    }
+    break;
+    case A_boolExprType::A_boolUnitKind:
+    {
+        aA_type type1 = check_BoolUnit(out, be->u.boolUnit);
+        if (check_aATypeSame(getBoolType(), type1) == false)
+            error_print(out, be->pos, "不是bool类型");
+        return type1;
+    }
+    break;
+
+    default:
         break;
-        case A_boolExprType::A_boolUnitKind:{
-            aA_type type1 = check_BoolUnit(out, be->u.boolUnit);
-            if(check_aATypeSame(getBoolType(), type1)==false)
-                error_print(out, be->pos, "不是bool类型");
-            return type1;
-        }
-        break;
-            
-        default:
-            break;
     }
     return nullptr;
 }
 
-aA_type idToType(std::ostream * out,A_pos pos,string id)
+aA_type idToType(std::ostream *out, A_pos pos, string id)
 {
     if (curFuncParams.find(id) != curFuncParams.end())
         return curFuncParams[id];
-    else if (g_token2Type.find(id) != g_token2Type.end())
-        return g_token2Type[id];
-    else if(func2Param.find(id)!= func2Param.end())
-        error_print(out,pos,"Val name should not be func name");
+    else if (token2Type.find(id) != token2Type.end())
+        return token2Type[id];
+    else if (func2Param.find(id) != func2Param.end())
+        error_print(out, pos, "Val name should not be func name");
     return nullptr;
 }
 
@@ -861,7 +902,7 @@ aA_type check_ExprUnit(std::ostream *out, aA_exprUnit eu)
     {
         /* write your code here */
         string name = *(eu->u.id);
-        auto t = idToType(out,eu->pos,name);
+        auto t = idToType(out, eu->pos, name);
         if (t == nullptr)
             error_print(out, eu->pos, "未找到变量名：" + name);
         return t;
@@ -876,38 +917,37 @@ aA_type check_ExprUnit(std::ostream *out, aA_exprUnit eu)
         ret->type = A_dataType::A_nativeTypeKind;
         ret->u.nativeType = A_nativeType::A_intTypeKind;
         return ret;
-
     }
     break;
     case A_exprUnitType::A_fnCallKind:
     {
         /* write your code here */
-        aA_type fnRetType = check_FuncCall(out,eu->u.callExpr);
+        aA_type fnRetType = check_FuncCall(out, eu->u.callExpr);
         return fnRetType;
     }
     break;
     case A_exprUnitType::A_arrayExprKind:
     {
         /* write your code here */
-        return check_ArrayExpr(out,eu->u.arrayExpr);
+        return check_ArrayExpr(out, eu->u.arrayExpr);
     }
     break;
     case A_exprUnitType::A_memberExprKind:
     {
         /* write your code here */
-        return check_MemberExpr(out,eu->u.memberExpr);
+        return check_MemberExpr(out, eu->u.memberExpr);
     }
     break;
     case A_exprUnitType::A_arithExprKind:
     {
         /* write your code here */
-        return check_arithExprValValid(out,eu->u.arithExpr);
+        return check_arithExprValValid(out, eu->u.arithExpr);
     }
     break;
     case A_exprUnitType::A_arithUExprKind:
     {
         /* write your code here */
-        return check_ExprUnit(out,eu->u.arithUExpr->expr);
+        return check_ExprUnit(out, eu->u.arithUExpr->expr);
     }
     break;
     }
@@ -944,15 +984,17 @@ aA_type check_FuncCall(std::ostream *out, aA_fnCall fc)
 
     /* write your code here */
     string fnName = *(fc->fn);
-    if(g_fnDef2Type.find(fnName)==g_fnDef2Type.end())
-        error_print(out,fc->pos,"未找到函数名："+ fnName);
+    if (g_fnDef2Type.find(fnName) == g_fnDef2Type.end())
+        error_print(out, fc->pos, "未找到函数名：" + fnName);
     auto varDeclVec = func2Param[fnName];
-    if(varDeclVec.size()!=fc->vals.size())
-        error_print(out, fc->pos, "函数调用参数数量不合法："+fnName);
-    for(int i=0;i<varDeclVec.size();i++){
+    if (varDeclVec.size() != fc->vals.size())
+        error_print(out, fc->pos, "函数调用参数数量不合法：" + fnName);
+    for (int i = 0; i < varDeclVec.size(); i++)
+    {
         auto varDecl = varDeclVec[i];
         auto rightVal = fc->vals[i];
-        if(!check_aATypeSame(getVarDeclType(varDecl),check_rightValValid(out,rightVal))){
+        if (!check_aATypeSame(getVarDeclType(varDecl), check_rightValValid(out, rightVal)))
+        {
             error_print(out, fc->pos, "参数 " + std::to_string(i) + " 类型不合法：" + fnName);
         }
     }
@@ -981,11 +1023,12 @@ void check_CallStmt(std::ostream *out, aA_callStmt cs)
     return;
 }
 
-aA_type check_arithBiopExpr(std::ostream * out, aA_arithBiOpExpr biopExpr){
-    aA_type operand1Type = check_arithExprValValid(out,biopExpr->left);
-    aA_type operand2Type = check_arithExprValValid(out,biopExpr->right);
-    if(check_aATypeSame(getIntType(),operand1Type)==false)
-        error_print(out,operand1Type->pos,"运算单元不是int类型");
+aA_type check_arithBiopExpr(std::ostream *out, aA_arithBiOpExpr biopExpr)
+{
+    aA_type operand1Type = check_arithExprValValid(out, biopExpr->left);
+    aA_type operand2Type = check_arithExprValValid(out, biopExpr->right);
+    if (check_aATypeSame(getIntType(), operand1Type) == false)
+        error_print(out, operand1Type->pos, "运算单元不是int类型");
     if (check_aATypeSame(getIntType(), operand2Type) == false)
         error_print(out, operand2Type->pos, "运算单元不是int类型");
     return operand1Type;
@@ -993,7 +1036,8 @@ aA_type check_arithBiopExpr(std::ostream * out, aA_arithBiOpExpr biopExpr){
 
 aA_type check_arithExprValValid(std::ostream *out, aA_arithExpr arithExpr)
 {
-    if(arithExpr==nullptr) return nullptr;
+    if (arithExpr == nullptr)
+        return nullptr;
     switch (arithExpr->kind)
     {
     case (A_arithExprType::A_exprUnitKind):
@@ -1003,7 +1047,7 @@ aA_type check_arithExprValValid(std::ostream *out, aA_arithExpr arithExpr)
     }
     case (A_arithExprType::A_arithBiOpExprKind):
     {
-        return check_arithBiopExpr(out,arithExpr->u.arithBiOpExpr);
+        return check_arithBiopExpr(out, arithExpr->u.arithBiOpExpr);
         break;
     }
     }
@@ -1012,19 +1056,20 @@ aA_type check_arithExprValValid(std::ostream *out, aA_arithExpr arithExpr)
 
 aA_type check_rightValValid(std::ostream *out, aA_rightVal rightVal)
 {
-    if(rightVal==nullptr) return nullptr;
+    if (rightVal == nullptr)
+        return nullptr;
     switch (rightVal->kind)
     {
-        case (A_rightValType::A_arithExprValKind):
-        {
-            return check_arithExprValValid(out, rightVal->u.arithExpr);
-            break;
-        }
-        case (A_rightValType::A_boolExprValKind):
-        {
-            return check_BoolExpr(out,rightVal->u.boolExpr);
-            break;
-        }
+    case (A_rightValType::A_arithExprValKind):
+    {
+        return check_arithExprValValid(out, rightVal->u.arithExpr);
+        break;
+    }
+    case (A_rightValType::A_boolExprValKind):
+    {
+        return check_BoolExpr(out, rightVal->u.boolExpr);
+        break;
+    }
     }
     return nullptr;
 }
@@ -1033,10 +1078,11 @@ void check_ReturnStmt(std::ostream *out, aA_returnStmt rs)
 {
     if (!rs)
         return;
-    aA_type rightValType = check_rightValValid(out,rs->retVal);
+    aA_type rightValType = check_rightValValid(out, rs->retVal);
     aA_type funcRetType = g_fnDef2Type[cur_func_name];
-    if(check_aATypeSame(funcRetType,rightValType)==false){
-        error_print(out,rs->pos,"返回值类型与函数定义类型不同");
+    if (check_aATypeSame(funcRetType, rightValType) == false)
+    {
+        error_print(out, rs->pos, "返回值类型与函数定义类型不同");
     }
     return;
 }
