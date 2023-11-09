@@ -889,21 +889,25 @@ aA_type check_ExprUnit(std::ostream *out, aA_exprUnit eu)
     case A_exprUnitType::A_arrayExprKind:
     {
         /* write your code here */
+        return check_ArrayExpr(out,eu->u.arrayExpr);
     }
     break;
     case A_exprUnitType::A_memberExprKind:
     {
         /* write your code here */
+        return check_MemberExpr(out,eu->u.memberExpr);
     }
     break;
     case A_exprUnitType::A_arithExprKind:
     {
         /* write your code here */
+        return check_arithExprValValid(out,eu->u.arithExpr);
     }
     break;
     case A_exprUnitType::A_arithUExprKind:
     {
         /* write your code here */
+        return check_ExprUnit(out,eu->u.arithUExpr->expr);
     }
     break;
     }
