@@ -47,16 +47,21 @@ typedef struct aA_returnStmt_ *aA_returnStmt;
 typedef struct aA_programElement_ *aA_programElement;
 typedef struct aA_program_ *aA_program;
 
-struct aA_type_
-{
-    // 添加其作用域范围
-    int cur_scope;
+struct aA_type_ {
+    // line and cols
     A_pos pos;
+    // 区分nativeType and structType
     A_dataType type;
-    union
-    {
+    bool is_array;
+    // get len
+    int len;
+    // cur scope
+    int cur_scope;
+    // bool type or not
+    bool is_bool;
+    union {
         A_nativeType nativeType;
-        string *structType;
+        string* structType;
     } u;
 };
 
