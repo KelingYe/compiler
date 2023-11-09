@@ -239,7 +239,14 @@ void check_VarDec(std::ostream *out, aA_varDecl vd)
     return;
 }
 
-//实现对右值的检查
+// 实现对右值的检查
+aA_type getBoolType()
+{
+    aA_type type = new aA_type_;
+    type->is_bool = true;
+    type->is_array = false;
+    return type;
+}
 
 aA_type getIntType()
 {
@@ -439,7 +446,7 @@ aA_type check_rightValValid(std::ostream *out, aA_rightVal rightVal)
     return nullptr;
 }
 
-//检查两个type是否相同
+// 检查两个type是否相同
 bool check_aATypeSame(aA_type a, aA_type b)
 {
     if (a->is_bool == true && b->is_bool == true)
@@ -826,22 +833,35 @@ void check_AssignStmt(std::ostream *out, aA_assignStmt as)
 {
     if (!as)
         return;
-    switch (as->leftVal->kind)
+    // should assume that right val and left val may be nullptrs
+    aA_type rightValType = check_rightValValid(out, as->rightVal);
+    // check left val valid
+    aA_type leftValType = check_leftValValid(out, as->leftVal);
+    if (check_aATypeSame(leftValType, rightValType) != true)
+        error_print(out, as->pos, "The type of left val and right val doesn't match here!");
+    return;
+
+    return;
+}
+
+aA_type check_leftValValid(std::ostream *out, aA_leftVal leftVal)
+{
+    switch (leftVal->kind)
     {
     case A_leftValType::A_varValKind:
     {
         /* write your code here */
         // 查看是否未声明
-        string name = *(as->leftVal->u.id);
+        string name = *(leftVal->u.id);
         // 获得左值的type
         aA_type type = get_TypeById(name);
         if (type == nullptr)
         {
 
-            error_print(out, as->leftVal->pos, "Left Val here is not declared!");
+            error_print(out, leftVal->pos, "Left Val here is not declared!");
         }
 
-        // return leftValType;
+        return type;
     }
     break;
     case A_leftValType::A_arrValKind:
@@ -855,17 +875,16 @@ void check_AssignStmt(std::ostream *out, aA_assignStmt as)
                 };
 
          */
-        check_ArrayExpr(out, as->leftVal->u.arrExpr);
+       return check_ArrayExpr(out, leftVal->u.arrExpr);
     }
     break;
     case A_leftValType::A_memberValKind:
     {
         /* write your code here */
-        check_MemberExpr(out, as->leftVal->u.memberExpr);
+       return check_MemberExpr(out, leftVal->u.memberExpr);
     }
     break;
     }
-    return;
 }
 
 aA_type check_ArrayExpr(std::ostream *out, aA_arrayExpr ae)
@@ -988,15 +1007,6 @@ void check_IfStmt(std::ostream *out, aA_ifStmt is)
     return;
 }
 
-aA_type getBoolType()
-{
-    aA_type type = new aA_type_;
-    type->is_bool = true;
-    type->is_array = false;
-    return type;
-}
-
-
 void check_WhileStmt(std::ostream *out, aA_whileStmt ws)
 {
     if (!ws)
@@ -1011,7 +1021,7 @@ void check_WhileStmt(std::ostream *out, aA_whileStmt ws)
     return;
 }
 
-//实际上来是不需要返回type值，因为fncall不作为右值
+// 实际上来是不需要返回type值，因为fncall不作为右值
 aA_type check_FuncCall(std::ostream *out, aA_fnCall fc)
 {
     if (!fc)
