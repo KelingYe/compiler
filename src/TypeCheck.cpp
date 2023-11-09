@@ -3,14 +3,12 @@
 // maps to store the type information. Feel free to design new data structures if you need.
 typeMap g_token2Type;         // global token ids to type
 typeMap funcparam_token2Type; // func params token ids to type
-typeMap g_fnDec2Type; //存储声明过的函数及其返回值
-typeMap g_fnDef2Type; //存储已定义过的函数及其返回值
+typeMap g_fnDec2Type;         // 存储声明过的函数及其返回值
+typeMap g_fnDef2Type;         // 存储已定义过的函数及其返回值
+typeMap curFuncParams;
 
-
-
-paramMemberMap func2Param;
-paramMemberMap struct2Members;
-
+paramMemberMap func2Param; // funtion name以及对应的函数列表
+paramMemberMap struct2Members;  //struct name 以及对应的成员参数
 
 // cur_scope,global is 1, entering scope ++, leaving scope --
 int cur_scope = 1;
@@ -18,7 +16,7 @@ int cur_scope = 1;
 void addCurScope()
 {
     cur_scope++;
-    //printf("Entered a new code block %d\n", cur_scope);
+    // printf("Entered a new code block %d\n", cur_scope);
 }
 
 // 清除所有curScope的varDecl
@@ -28,7 +26,7 @@ void minusCurScope()
     // kill all the variables
     for (auto i : g_token2Type)
     {
-        //也就是在存变量表时，需要存该变量的作用域
+        // 也就是在存变量表时，需要存该变量的作用域
         if (i.second->cur_scope == cur_scope)
         {
             // 不能在循环中改变结构体的值
@@ -40,7 +38,6 @@ void minusCurScope()
 
     cur_scope--;
 }
-
 
 // private util functions. You can use these functions to help you debug.
 void error_print(std::ostream *out, A_pos p, string info)
@@ -173,11 +170,17 @@ void check_multiDeclaration(std::ostream *out, string name, A_pos pos)
     {
         error_print(out, pos, "This name " + name + " has been declared in struct map!");
     }
-   
-   // func
+
+    // func
     if (g_fnDec2Type.find(name) != g_fnDec2Type.end())
     {
         error_print(out, pos, "This name " + name + " has been declared in func name map!");
+    }
+
+    // func 的参数
+    if (curFuncParams.find(name) != curFuncParams.end())
+    {
+        error_print(out, pos, "This name " + name + " has been declared in func variable list!");
     }
 }
 
@@ -191,7 +194,7 @@ void check_VarDeclScalar(std::ostream *out, aA_varDeclScalar vd)
     A_pos pos = vd->pos;
     check_multiDeclaration(out, name, pos);
     // 保存信息至变量表
-    type->cur_scope=cur_scope;
+    type->cur_scope = cur_scope;
     g_token2Type[name] = type;
 }
 
@@ -206,7 +209,7 @@ void check_VarDeclArray(std::ostream *out, aA_varDeclArray vd)
     int len = vd->len;
     check_multiDeclaration(out, name, pos);
     // 保存信息至变量表  len没有用上，但是后续可能要用这个检查  ？？？？
-    type->cur_scope=cur_scope;
+    type->cur_scope = cur_scope;
     g_token2Type[name] = type;
 }
 
@@ -239,7 +242,7 @@ void check_VarDefScalar(std::ostream *out, aA_varDefScalar vd)
     check_multiDeclaration(out, name, pos);
     // 保存信息至变量表  val没有用上，但是后续可能要用这个检查  ？？？？
     aA_rightVal val = vd->val;
-    type->cur_scope=cur_scope;
+    type->cur_scope = cur_scope;
     g_token2Type[name] = type;
 }
 
@@ -257,7 +260,7 @@ void check_VarDefArray(std::ostream *out, aA_varDefArray vd)
     // 保存信息至变量表  len,vals没有用上，但是后续可能要用这个检查  ？？？
     int len = vd->len;
     vector<aA_rightVal> vals = vd->vals;
-    type->cur_scope=cur_scope;
+    type->cur_scope = cur_scope;
     g_token2Type[name] = type;
 }
 
@@ -303,7 +306,6 @@ void check_VarDecl(std::ostream *out, aA_varDeclStmt vd)
     return;
 }
 
-
 // 还需检查变量重名+所有变量类型合法  既适用于struct,也适用于函数传输的函数
 void check_params(std::ostream *out, vector<aA_varDecl> varDeclList)
 {
@@ -316,22 +318,22 @@ void check_params(std::ostream *out, vector<aA_varDecl> varDeclList)
         if (varDecl->kind == A_varDeclStmtType::A_varDeclKind)
         {
 
-            aA_varDeclScalar vd=varDecl->u.declScalar;
+            aA_varDeclScalar vd = varDecl->u.declScalar;
             // 检查类型
             aA_type type = vd->type;
             check_type_valid(out, type);
-            name=*(vd->id);
+            name = *(vd->id);
         }
         else if (varDecl->kind == A_varDeclStmtType::A_varDefKind)
         {
-            aA_varDeclArray vd=varDecl->u.declArray;
+            aA_varDeclArray vd = varDecl->u.declArray;
             // 检查类型
             aA_type type = vd->type;
             check_type_valid(out, type);
-            name=*(vd->id);
+            name = *(vd->id);
         }
 
-        //查看是否重名
+        // 查看是否重名
         for (auto paramName : paramNames)
         {
             if (name == paramName)
@@ -384,7 +386,7 @@ void check_FnDecl(std::ostream *out, aA_fnDecl fd)
     aA_type type = fd->type;
     check_type_valid(out, type);
     // 还需检查变量重名+所有变量类型合法
-    vector<aA_varDecl> varDecls=fd->paramDecl->varDecls;
+    vector<aA_varDecl> varDecls = fd->paramDecl->varDecls;
     check_params(out, varDecls);
     return;
 }
@@ -400,16 +402,16 @@ void check_FnDeclStmt(std::ostream *out, aA_fnDeclStmt fd)
     A_pos pos = fd->pos;
     check_multiDeclaration(out, name, pos);
     check_FnDecl(out, fd->fnDecl);
-    //将其加入到全局函数声明表中
-    g_fnDec2Type[name]=fd->fnDecl->type;
+    // 将其加入到全局函数声明表中
+    g_fnDec2Type[name] = fd->fnDecl->type;
     func2Param[name] = fd->fnDecl->paramDecl->varDecls;
-    
+
     return;
 }
 
-
-//检查函数是否重复定义
-void check_multiFndef(std::ostream *out, string name, A_pos pos){
+// 检查函数是否重复定义
+void check_multiFndef(std::ostream *out, string name, A_pos pos)
+{
 
     if (g_fnDef2Type.find(name) != g_fnDef2Type.end())
     {
@@ -428,21 +430,23 @@ void check_FnDef1(std::ostream *out, aA_fnDef fd)
     //      }
     if (!fd)
         return;
-    //检查是否重复定义
+    // 检查是否重复定义
     string name = *(fd->fnDecl->id);
     A_pos pos = fd->pos;
     check_multiFndef(out, name, pos);
     check_FnDecl(out, fd->fnDecl);
-    //将其加入到全局函数定义表,在判断后选择是否加入全局函数声明表
-    g_fnDef2Type[name]=fd->fnDecl->type;
-    if(!g_fnDec2Type[name]){
-        g_fnDec2Type[name]=fd->fnDecl->type;
+    // 将其加入到全局函数定义表,在判断后选择是否加入全局函数声明表
+    g_fnDef2Type[name] = fd->fnDecl->type;
+    if (!g_fnDec2Type[name])
+    {
+        g_fnDec2Type[name] = fd->fnDecl->type;
         func2Param[name] = fd->fnDecl->paramDecl->varDecls;
-    }else{
-        //这里可能会有重载的问题，但是本次lab不做处理
+    }
+    else
+    {
+        // 这里可能会有重载的问题，但是本次lab不做处理
     }
 
-    
     return;
 }
 
@@ -457,15 +461,39 @@ void check_FnDef1(std::ostream *out, aA_fnDef fd)
     //      }
     if (!fd)
         return;
-    //函数全局已经检查过可以向内部检查
+
+    // 函数全局已经检查过可以向内部检查
+    string name = *(fd->fnDecl->id);
+    vector<aA_varDecl> varDeclVec = func2Param[name];
+    for (auto varDecl : varDeclVec)
+    {
+        string name;
+        aA_type type;
+        // 判断变量类型
+        if (varDecl->kind == A_varDeclType::A_varDeclScalarKind)
+        {
+
+            aA_varDeclScalar vd = varDecl->u.declScalar;
+            type = vd->type;
+            name = *(vd->id);
+        }
+        else if (varDecl->kind == A_varDeclType::A_varDeclArrayKind)
+        {
+            aA_varDeclArray vd = varDecl->u.declArray;
+            type = vd->type;
+            name = *(vd->id);
+        }
+        curFuncParams[name] = type;
+    }
+
     addCurScope();
-    
+
     for (auto stmt : fd->stmts)
     {
-      check_CodeblockStmt(out, stmt);
+        check_CodeblockStmt(out, stmt);
     }
     minusCurScope();
-   
+    curFuncParams.clear();
     return;
 }
 
@@ -499,6 +527,34 @@ void check_CodeblockStmt(std::ostream *out, aA_codeBlockStmt cs)
     return;
 }
 
+/*
+
+struct aA_leftVal_
+{
+    A_pos pos;
+    A_leftValType kind;
+    union
+    {
+        string *id;
+        aA_arrayExpr arrExpr;
+        aA_memberExpr memberExpr;
+    } u;
+};
+*/
+
+// only gets the parameter type!!!
+aA_type get_TypeById(string id)
+{
+    // 先查询当前函数
+    if (curFuncParams.find(id) != curFuncParams.end())
+        return curFuncParams[id];
+    else if (g_token2Type.find(id) != g_token2Type.end())
+        return g_token2Type[id];
+    else if (struct2Members.find(id) != struct2Members.end())
+        return     
+    return NULL;
+}
+
 void check_AssignStmt(std::ostream *out, aA_assignStmt as)
 {
     if (!as)
@@ -509,11 +565,27 @@ void check_AssignStmt(std::ostream *out, aA_assignStmt as)
     case A_leftValType::A_varValKind:
     {
         /* write your code here */
+        // 查看是否未声明
+        string name = *(as->leftVal->u.id);
+        // 获得左值的type
+        aA_type type = get_TypeById(name);
+        if (type == nullptr)
+            error_print(out, as->leftVal->pos, "Left Val here is not declared!");
+        // return leftValType;
     }
     break;
     case A_leftValType::A_arrValKind:
     {
         /* write your code here */
+        /* struct aA_arrayExpr_
+                {
+                    A_pos pos;
+                    string *arr;
+                    aA_indexExpr idx;
+                };
+
+         */
+
     }
     break;
     case A_leftValType::A_memberValKind:
