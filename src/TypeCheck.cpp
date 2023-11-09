@@ -13,7 +13,7 @@ paramMemberMap struct2Members; // struct name 以及对应的成员参数
 // 全局层数为1, 进入函数 ++, 离开函数 --
 int cur_scope = 1;
 
-//进入新的作用域
+// 进入新的作用域
 void addCurScope()
 {
     cur_scope++;
@@ -83,10 +83,10 @@ void check_Prog(std::ostream *out, aA_program p)
             Write your code here.
 
             Hint:
-            1. Design the order of checking the program elements to meet the requirements that 
+            1. Design the order of checking the program elements to meet the requirements that
             funtion declaration and global variable declaration can be used anywhere in the program.
 
-            2. Many types of statements indeed collapse to some same units, 
+            2. Many types of statements indeed collapse to some same units,
             so a good abstract design will help you reduce the amount of your code.
         */
         switch (ele->kind)
@@ -331,6 +331,24 @@ aA_type check_BoolExpr(std::ostream *out, aA_boolExpr be)
     return nullptr;
 }
 
+/*
+struct aA_exprUnit_
+{
+    A_pos pos;
+    A_exprUnitType kind;
+    union
+    {
+        int num;
+        string *id;
+        aA_arithExpr arithExpr;
+        aA_fnCall callExpr;
+        aA_arrayExpr arrayExpr;
+        aA_memberExpr memberExpr;
+        aA_arithUExpr arithUExpr;
+    } u;
+};
+
+*/
 aA_type check_ExprUnit(std::ostream *out, aA_exprUnit eu)
 {
     // validate the expression unit and return the aA_type of it
@@ -348,7 +366,7 @@ aA_type check_ExprUnit(std::ostream *out, aA_exprUnit eu)
         string name = *(eu->u.id);
         auto t = get_TypeById(name);
         if (t == nullptr)
-            error_print(out, eu->pos, "<" + name + "> has not been declared!" );
+            error_print(out, eu->pos, "<" + name + "> has not been declared!");
         return t;
     }
     break;
@@ -495,9 +513,23 @@ void check_VarDefScalar(std::ostream *out, aA_varDefScalar vd)
     string name = *(vd->id);
     A_pos pos = vd->pos;
     check_multiDeclaration(out, name, pos);
-    // 检查右值 ？？？
-    // 保存信息至变量表  (val没有用上，？？？）
+    // 检查右值
     aA_rightVal val = vd->val;
+    aA_type rightValType = check_rightValValid(out, val);
+    if (rightValType == nullptr)
+        error_print(out, val->pos, "Right Value not valid!");
+    // have to check whether left value type and right Val Type matches
+    if (rightValType->is_array == true)
+    {
+        error_print(out, rightValType->pos, "Right value is an array!");
+    }
+    aA_type leftValType = vd->type;
+    if (!check_aATypeSame(leftValType, rightValType))
+    {
+        error_print(out, rightValType->pos, "Right Value type incompatible with left type");
+    }
+
+    // 保存信息至变量表
     type->is_array = false;
     type->cur_scope = cur_scope;
     token2Type[name] = type;
@@ -515,9 +547,24 @@ void check_VarDefArray(std::ostream *out, aA_varDefArray vd)
     A_pos pos = vd->pos;
     check_multiDeclaration(out, name, pos);
     // 检查右值
-    //  保存信息至变量表  vals没有用上 ？？？
-    int len = vd->len;
     vector<aA_rightVal> vals = vd->vals;
+    // size prob
+    if (vd->len < vals.size())
+        error_print(out, vd->pos, "Too many parameters for a var def array!");
+    for (int i = 0; i < vals.size(); i++)
+    {
+        aA_type rightValType = check_rightValValid(out, vals[i]);
+        if (rightValType == nullptr)
+            error_print(out, rightValType->pos, "Right Value not valid!");
+        // have to check whether left value type and right Val Type matches
+        aA_type leftValType = vd->type;
+        if (!check_aATypeSame(leftValType, rightValType))
+        {
+            error_print(out, rightValType->pos, "Right Value type incompatible with left type");
+        }
+    }
+    //  保存信息至变量表
+    int len = vd->len;
     type->cur_scope = cur_scope;
     type->len = len;
     type->is_array = true;
@@ -827,6 +874,8 @@ aA_type get_TypeById(string id)
     {
         aA_type atype = new aA_type_;
         atype->type = A_structTypeKind;
+        atype->is_array=false;
+        atype->is_bool=false;
         return atype;
     }
     return NULL;
@@ -878,13 +927,13 @@ aA_type check_leftValValid(std::ostream *out, aA_leftVal leftVal)
                 };
 
          */
-       return check_ArrayExpr(out, leftVal->u.arrExpr);
+        return check_ArrayExpr(out, leftVal->u.arrExpr);
     }
     break;
     case A_leftValType::A_memberValKind:
     {
         /* write your code here */
-       return check_MemberExpr(out, leftVal->u.memberExpr);
+        return check_MemberExpr(out, leftVal->u.memberExpr);
     }
     break;
     }
@@ -1024,7 +1073,6 @@ void check_WhileStmt(std::ostream *out, aA_whileStmt ws)
     return;
 }
 
-// 实际上来是不需要返回type值，因为fncall不作为右值
 aA_type check_FuncCall(std::ostream *out, aA_fnCall fc)
 {
     if (!fc)
