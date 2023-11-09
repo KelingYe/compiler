@@ -777,7 +777,21 @@ void check_FnDef1(std::ostream *out, aA_fnDef fd)
     }
     else // 这里可能会有重载的问题，但是本次lab不做考虑所以只处理定义与声明不一致的问题 ？？？
     {
-        // if(g_fnDec2Type[name]->ty)
+        if (g_fnDef2Type.find(name) == g_fnDef2Type.end())
+            error_print(out, pos, "Function name <" + name + "> is not declared!");
+        auto varDeclVec = func2Param[name];
+        if (varDeclVec.size() != fd->fnDecl->paramDecl->varDecls.size())
+            error_print(out, fd->pos, "Variable size in <" + name + "> does not match!");
+        for (int i = 0; i < varDeclVec.size(); i++)
+        {
+            auto varDecl = varDeclVec[i];
+            auto rightVal = fd->fnDecl->paramDecl->varDecls[i];
+            if (!check_aATypeSame(getVarDeclType(varDecl), getVarDeclType(rightVal)))
+            {
+                error_print(out, fd->pos, "Type of variable <" + std::to_string(i) + "> in " + name + "does not match!");
+            }
+        }
+        return;
     }
 
     return;
