@@ -131,7 +131,7 @@ void check_Prog(std::ostream *out, aA_program p)
         break;
         case A_programFnDefKind:
         {
-            check_FnDef1(out, ele->u.fnDef);
+            check_FnDef2(out, ele->u.fnDef);
         }
         break;
         default:{
@@ -459,16 +459,16 @@ aA_type check_rightValValid(std::ostream *out, aA_rightVal rightVal)
         return nullptr;
     switch (rightVal->kind)
     {
-    case (A_rightValType::A_arithExprValKind):
-    {
-        return check_arithExprValValid(out, rightVal->u.arithExpr);
-        break;
-    }
-    case (A_rightValType::A_boolExprValKind):
-    {
-        return check_BoolExpr(out, rightVal->u.boolExpr);
-        break;
-    }
+        case (A_rightValType::A_arithExprValKind):
+        {
+            return check_arithExprValValid(out, rightVal->u.arithExpr);
+            break;
+        }
+        case (A_rightValType::A_boolExprValKind):
+        {
+            return check_BoolExpr(out, rightVal->u.boolExpr);
+            break;
+        }
     }
     return nullptr;
 }
@@ -532,7 +532,7 @@ void check_VarDefScalar(std::ostream *out, aA_varDefScalar vd)
     aA_type leftValType = vd->type;
     if (!check_aATypeSame(leftValType, rightValType))
     {
-        error_print(out, rightValType->pos, "Right Value type incompatible with left type");
+        error_print(out, rightValType->pos, std::to_string(leftValType->type) + "Right Value type incompatible with left type");
     }
 
     // 保存信息至变量表
@@ -751,7 +751,6 @@ void check_FnDeclStmt(std::ostream *out, aA_fnDeclStmt fd)
 // 检查函数是否重复定义
 void check_multiFndef(std::ostream *out, string name, A_pos pos)
 {
-
     if (g_fnDef2Type.find(name) != g_fnDef2Type.end())
     {
         error_print(out, pos, "<" + name + "> has already been defined as a function!");
@@ -783,8 +782,6 @@ void check_FnDef1(std::ostream *out, aA_fnDef fd)
     }
     else // 这里可能会有重载的问题，但是本次lab不做考虑所以只处理定义与声明不一致的问题 ？？？
     {
-        if (g_fnDef2Type.find(name) == g_fnDef2Type.end())
-            error_print(out, pos, "Function name <" + name + "> is not declared!");
         auto varDeclVec = func2Param[name];
         if (varDeclVec.size() != fd->fnDecl->paramDecl->varDecls.size())
             error_print(out, fd->pos, "Variable size in <" + name + "> does not match!");
@@ -796,6 +793,10 @@ void check_FnDef1(std::ostream *out, aA_fnDef fd)
             {
                 error_print(out, fd->pos, "Type of variable <" + std::to_string(i) + "> in " + name + "does not match!");
             }
+        }
+        if (!check_aATypeSame(g_fnDec2Type[name], g_fnDef2Type[name]))
+        {
+            error_print(out, fd->fnDecl->type->pos, "Function definition doesn't match the declaration!");
         }
         return;
     }
