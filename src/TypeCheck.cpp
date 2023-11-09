@@ -547,8 +547,8 @@ aA_type get_TypeById(string id)
         return curFuncParams[id];
     else if (g_token2Type.find(id) != g_token2Type.end())
         return g_token2Type[id];
-    else if (struct2Members.find(id) != struct2Members.end())
-        return     
+    // else if (struct2Members.find(id) != struct2Members.end())
+    //     return   
     return NULL;
 }
 
@@ -582,19 +582,21 @@ void check_AssignStmt(std::ostream *out, aA_assignStmt as)
                 };
 
          */
+        check_ArrayExpr(out,as->leftVal->u.arrExpr);
 
     }
     break;
     case A_leftValType::A_memberValKind:
     {
         /* write your code here */
+        check_MemberExpr(out,as->leftVal->u.memberExpr);
     }
     break;
     }
     return;
 }
 
-void check_ArrayExpr(std::ostream *out, aA_arrayExpr ae)
+aA_type check_ArrayExpr(std::ostream *out, aA_arrayExpr ae)
 {
     if (!ae)
         return;
@@ -604,6 +606,49 @@ void check_ArrayExpr(std::ostream *out, aA_arrayExpr ae)
         Hint:
             check the validity of the array index
     */
+     if (!ae)    return nullptr;
+    string arrName = *(ae->arr);
+   
+    aA_type arrType = get_TypeById(arrName);
+    if (arrType == nullptr)
+        error_print(out, ae->pos, "Array Name here is not declared!");
+    // check arrType
+    if (arrType->is_array == false)
+        error_print(out, ae->pos, "This variable " + arrName + " is a scalar type!");
+    switch (ae->idx->kind){
+        case (A_indexExprKind::A_numIndexKind):
+        {
+            // 不直接让retType = arrType的目的是害怕retType->的修改也会影响到arrType的修改
+            aA_type retType = new aA_type_;
+            retType->cur_scope = arrType->cur_scope;
+            retType->is_array = false;
+            retType->pos = arrType->pos;
+            retType->type = arrType->type;
+            retType->u = arrType->u;
+            return retType;
+        }
+        break;
+        case (A_indexExprKind::A_idIndexKind):
+        {
+            string bTypeName = *(ae->idx->u.id);
+            aA_type bType = get_TypeById(bTypeName);
+            if (bType == nullptr)
+                error_print(out, ae->idx->pos, "The name of the val in array brackets here is not declared!");
+            if (bType->is_array == true)
+                error_print(out, ae->idx->pos, "The name of the val in array brackets here is an array!");
+            if (bType->type == A_dataType::A_structTypeKind)
+                error_print(out, ae->idx->pos, "The name of the val in array brackets here is a struct!");
+            aA_type retType = new aA_type_;
+            retType->cur_scope = arrType->cur_scope;
+            retType->is_array = false;
+            retType->pos = arrType->pos;
+            retType->type = arrType->type;
+            retType->u = arrType->u;
+            return retType;
+        }
+
+    }
+    return nullptr;
 }
 
 aA_type check_MemberExpr(std::ostream *out, aA_memberExpr me)
@@ -618,6 +663,36 @@ aA_type check_MemberExpr(std::ostream *out, aA_memberExpr me)
         Example:
             a.b
     */
+    string structVarName = *(me->structId);
+    aA_type structVarType = get_TypeById(structVarName);
+    if (structVarType == nullptr)
+        error_print(out, me->pos, "The variable " + structVarName + " defined here is not declared!");
+    if (structVarType->is_array == true)
+        error_print(out, me->pos, "The variable " + structVarName + " used here is an array!");
+    if (structVarType->type == A_dataType::A_nativeTypeKind)
+        error_print(out, me->pos, "The variable " + structVarName + " used here is a int!");
+    // now we confirm a is a struct
+    string innerVarName = *(me->memberId);
+    
+    // check innerVarName in struct or not
+    vector<aA_varDecl> varDeclVec = struct2Members[*(structVarType->u.structType)];
+    aA_type matchType = nullptr;
+    for (auto varDecl : varDeclVec)
+    {
+        // if(varDecl==nullptr)
+            // std::cout<<"Should not be a nullptr in varDecl"<<std::endl;
+        string varDeclName = getVarDeclName(varDecl);
+        // if(TypeCheckDebug) std::cout<<"This var decl name is "<<varDeclName<<std::endl;
+        if (varDeclName == innerVarName){
+            matchType = getVarDeclType(varDecl);
+            
+        }
+            
+    }
+    if (matchType == nullptr)
+        error_print(out, me->pos, "The inner variable " + innerVarName + " used in this struct is not defined!");
+    // return b type
+    return matchType;
     return nullptr;
 }
 
